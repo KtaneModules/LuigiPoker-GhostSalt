@@ -1,0 +1,10 @@
+{
+  "name": "GSLuigiPoker-Editor",
+  "references": [
+    "GSLuigiPoker"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": []
+}

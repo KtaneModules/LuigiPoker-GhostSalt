@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 615501dbe4f3fe94fbf4b564abb10237, type: 3}
+  m_Name: ModConfig
+  m_EditorClassIdentifier: 
+  id: GSLuigiPoker
+  title: Luigi Poker
+  author: GhostSalt
+  description: 'Well, it''s actually called Picture Poker, but who uses that name?
+    The primary things about this minigame are Luigi and Poker. Thus, Luigi Poker.
+    I guess Nintendo had to get the name to be alliterative, though.
+
+
+    This module both took me ages and no time at all to make. I don''t know how that''s
+    possible. Really proud of it, though. Some of the sound effects aren''t from Picture
+    Poker, though, as I couldn''t find them. Soz.
+
+
+    And now, a message from our sponsor: Twitch Plays!'
+  version: 1.0
+  outputFolder: build
+  previewImage: {fileID: 2800000, guid: 9fb480467af5e7343beb98672c26033d, type: 3}
