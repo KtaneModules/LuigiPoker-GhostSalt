@@ -21,7 +21,7 @@ public class LuigiPokerScript : MonoBehaviour
     public Image[] LuigiHandRends;
     public Image[] HandScores;
     public Image[] Icons;
-    public Image BalanceCoin, BonusCoin, BonusNumTemplate, CondNumTemplate, WideNumTemplate, WinStatus;
+    public Image BalanceCoin, BonusCoin, BonusNumTemplate, CondNumTemplate, TPSolveReady, WideNumTemplate, WinStatus;
 
     private KMAudio.KMAudioRef Sound = null, Sound2 = null;
     private float DefaultGameMusicVolume;
@@ -41,7 +41,7 @@ public class LuigiPokerScript : MonoBehaviour
     private int Balance = 10;
     private int Bet;
     private bool[] Selected = new bool[5];
-    private bool CannotPress = true, Focused, Muted, Proceed, Solved;
+    private bool CannotPress = true, Focused, HoldSolve, Muted, Proceed, Ready, Solved;
 
     private Sprite GetSpriteFromName(string name)
     {
@@ -272,6 +272,7 @@ public class LuigiPokerScript : MonoBehaviour
         Buttons[5].OnInteract += delegate { if (!CannotPress) { if (Bet == 5) Audio.PlaySoundAtTransform("cannot bet", transform); else StartCoroutine(AddBet()); } return false; };
         Buttons[6].OnInteract += delegate { if (!CannotPress) StartCoroutine(HandleMiddlePress()); return false; };
         Module.OnActivate += delegate { CalculateRound(); };
+        TPSolveReady.transform.localPosition = new Vector3(0.09f, 0.0686f, 0);
         Initialise();
         DisplayBalance();
         StartCoroutine(BlinkBetButton());
@@ -303,12 +304,18 @@ public class LuigiPokerScript : MonoBehaviour
 
     void DisplayBalance()
     {
-        if (!Solved && Balance >= 100)
+        if (!Solved && Balance >= 100 && !HoldSolve)
         {
             Module.HandlePass();
             StartCoroutine(YRS());
             Solved = true;
             Debug.LogFormat("[Luigi Poker #{0}] Your balance now equals 100. Module solved!", _moduleID);
+        }
+        else if (!Solved && Balance >= 100 && !Ready)
+        {
+            Ready = true;
+            StartCoroutine(SolveReady());
+            Debug.LogFormat("[Luigi Poker #{0}] Your balance now equals 100. Ready to release the solve!", _moduleID);
         }
         var temp = Balance;
         for (int i = 0; i < Digits.Count(); i++)
@@ -474,6 +481,36 @@ public class LuigiPokerScript : MonoBehaviour
         for (int i = 0; i < 5; i++)
             if (LuigisHand.Where(x => x == LuigisHand[i]).Count() < 2)
                 Selected[i] = true;
+    }
+
+    private IEnumerator SolveReady(float duration = 0.05f)
+    {
+        Audio.PlaySoundAtTransform("solve ready", TPSolveReady.transform);
+        float timer = 0;
+        while (timer < duration)
+        {
+            yield return null;
+            timer += Time.deltaTime;
+            TPSolveReady.transform.localPosition = Vector3.Lerp(new Vector3(0.09f, TPSolveReady.transform.localPosition.y, 0), new Vector3(0.015f, TPSolveReady.transform.localPosition.y, 0), timer / duration);
+        }
+        TPSolveReady.transform.localPosition = new Vector3(0.015f, TPSolveReady.transform.localPosition.y, 0);
+    }
+
+    private IEnumerator SolveRelease(float duration = 0.05f)
+    {
+        Module.HandlePass();
+        StartCoroutine(YRS());
+        Solved = true;
+        Audio.PlaySoundAtTransform("solve ready", TPSolveReady.transform);
+        Debug.LogFormat("[Luigi Poker #{0}] Solve released. Module solved!", _moduleID);
+        float timer = 0;
+        while (timer < duration)
+        {
+            yield return null;
+            timer += Time.deltaTime;
+            TPSolveReady.transform.localPosition = Vector3.Lerp(new Vector3(0.015f, TPSolveReady.transform.localPosition.y, 0), new Vector3(0.09f, TPSolveReady.transform.localPosition.y, 0), timer / duration);
+        }
+        TPSolveReady.transform.localPosition = new Vector3(0.09f, TPSolveReady.transform.localPosition.y, 0);
     }
 
     private IEnumerator BlinkCard(Image card, float duration = 0.125f)
@@ -1030,14 +1067,46 @@ public class LuigiPokerScript : MonoBehaviour
     }
 
 #pragma warning disable 414
-    private string TwitchHelpMessage = "Use '!{0} 123 bet5 go' to select cards 1, 2 & 3, bet 5 coins, then press 'Draw'. Each part of the command is optional: for example, '!{0} 123 go' will not change the bet and '!{0} bet5 go' won't draw any cards. '!{0} mute', '!{0} unmute' will mute/unmute the smooth jazz.";
+    private string TwitchHelpMessage = "Use '!{0} 123 bet5 go' to select cards 1, 2 & 3, bet 5 coins, then press 'Draw'. Each part of the command is optional: for example, '!{0} 123 go' will not change the bet and '!{0} bet5 go' won't draw any cards. '!{0} mute', '!{0} unmute' will mute/unmute the smooth jazz. '!{0} holdon' / '!{0} holdoff' change whether or not the module will wait for the command '!{0} release' before solving.";
 #pragma warning restore 414
     IEnumerator ProcessTwitchCommand(string command)
     {
         command = command.ToLowerInvariant();
         var commandArray = command.Split(' ');
-        if (command == "mute")
+        if (command == "release")
         {
+            if (HoldSolve && Ready)
+            {
+                yield return null;
+                StartCoroutine(SolveRelease());
+            }
+            else if (HoldSolve)
+                yield return "sendtochaterror Can't solve release: not ready yet!";
+            yield break;
+        }
+        else if (command == "holdon")
+        {
+            yield return null;
+            if (!HoldSolve)
+                yield return "sendtochat Now holding the solve.";
+            else
+                yield return "sendtochat Already holding the solve!";
+            HoldSolve = true;
+            yield break;
+        }
+        else if (command == "holdoff")
+        {
+            yield return null;
+            if (HoldSolve)
+                yield return "sendtochat No longer holding the solve.";
+            else
+                yield return "sendtochat Not holding the solve!";
+            HoldSolve = false;
+            yield break;
+        }
+        else if (command == "mute")
+        {
+            yield return null;
             Muted = true;
             StopCoroutine(MusicCoroutine);
             if (Sound != null)
@@ -1047,11 +1116,11 @@ public class LuigiPokerScript : MonoBehaviour
                 GameMusicControl.GameMusicVolume = DefaultGameMusicVolume;
             } 
             catch (Exception) { }
-            yield return null;
             yield break;
         }
         else if (command == "unmute")
         {
+            yield return null;
             Muted = false;
             if (Focused && Sound == null)
             {
@@ -1062,7 +1131,6 @@ public class LuigiPokerScript : MonoBehaviour
                 }
                 catch (Exception) { }
             }
-            yield return null;
             yield break;
         }
         for (int i = 0; i < commandArray.Length; i++)
@@ -1139,6 +1207,8 @@ public class LuigiPokerScript : MonoBehaviour
                 Buttons[5].OnInteract();
             }
             Buttons[6].OnInteract();
+            if (Ready)
+                StartCoroutine(SolveRelease());
         }
     }
 }
