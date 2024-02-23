@@ -6,7 +6,6 @@ using UnityEngine;
 using UnityEngine.UI;
 using KModkit;
 using Rnd = UnityEngine.Random;
-using Newtonsoft.Json.Serialization;
 
 public class LuigiPokerScript : MonoBehaviour
 {
@@ -17,11 +16,12 @@ public class LuigiPokerScript : MonoBehaviour
     public KMAudio Audio;
     public KMBombInfo Bomb;
     public KMSelectable[] Buttons;
+    public KMSelectable StatusSelectable;
     public Sprite[] Sprites;
     public Image[] LuigiHandRends;
     public Image[] HandScores;
     public Image[] Icons;
-    public Image BalanceCoin, BonusCoin, BonusNumTemplate, CondNumTemplate, TPSolveReady, WideNumTemplate, WinStatus;
+    public Image BalanceCoin, BonusCoin, BonusNumTemplate, CondNumTemplate, PauseSymbol, TPSolveReady, WideNumTemplate, WinStatus;
 
     private KMAudio.KMAudioRef Sound = null, Sound2 = null;
     private float DefaultGameMusicVolume;
@@ -41,7 +41,7 @@ public class LuigiPokerScript : MonoBehaviour
     private int Balance = 10;
     private int Bet;
     private bool[] Selected = new bool[5];
-    private bool CannotPress = true, Focused, HoldSolve, Muted, Proceed, Ready, Solved;
+    private bool ByeByeCounter, CannotPress = true, Focused, HoldSolve, Muted, Proceed, Ready, Solved;
 
     private Sprite GetSpriteFromName(string name)
     {
@@ -122,7 +122,7 @@ public class LuigiPokerScript : MonoBehaviour
             hand2.Select(x => new[] { "Cloud", "Mushroom", "Fire Flower", "Luigi", "Mario", "Star" }[x]).Join(", "),
             new[] { "Junk", "1 Pair", "2 Pairs", "3 of a Kind", "Full House", "4 of a Kind", "5 of a Kind" }[handScores[1]]);
         if (handScores[0] == 0 && handScores[1] == 0)
-            return -1;
+            return 2;
         if (handScores[0] > handScores[1])
             return 0;
         if (handScores[1] > handScores[0])
@@ -252,7 +252,7 @@ public class LuigiPokerScript : MonoBehaviour
             try { Sound.StopSound(); } catch (Exception) { }
         };
         Module.GetComponent<KMSelectable>().OnFocus += delegate { Focused = true; if (!Muted) { MusicCoroutine = StartCoroutine(PlayMusic()); try { GameMusicControl.GameMusicVolume = 0; } catch (Exception) { } } };
-        Module.GetComponent<KMSelectable>().OnDefocus += delegate { Focused = false; StopCoroutine(MusicCoroutine); if (Sound != null) Sound.StopSound(); try { GameMusicControl.GameMusicVolume = DefaultGameMusicVolume; } catch (Exception) { } Audio.PlaySoundAtTransform("bye bye", transform); };
+        Module.GetComponent<KMSelectable>().OnDefocus += delegate { Focused = false; StopCoroutine(MusicCoroutine); if (Sound != null) Sound.StopSound(); try { GameMusicControl.GameMusicVolume = DefaultGameMusicVolume; } catch (Exception) { } if (ByeByeCounter) Audio.PlaySoundAtTransform("bye bye", transform); ByeByeCounter = !ByeByeCounter; };  //This is a bit of a bodgy solution — there's a bug in KTaNE where OnDefocus gets called twice. I've fixed this by having a counter that causes the “Bye bye!” sound to play every second time OnDefocus is called.
         for (int i = 0; i < Buttons.Length; i++)
         {
             int x = i;
@@ -265,6 +265,7 @@ public class LuigiPokerScript : MonoBehaviour
             int x = i;
             Buttons[x].OnInteract += delegate { if (!CannotPress) CardPress(x); return false; };
         }
+        StatusSelectable.OnInteract += delegate { if (!Solved) StatusPress(); return false; };
         for (int i = 0; i < 5; i++)
             HandPositions.Add(Buttons[i].transform.parent.localPosition);
         for (int i = 0; i < 5; i++)
@@ -273,6 +274,7 @@ public class LuigiPokerScript : MonoBehaviour
         Buttons[6].OnInteract += delegate { if (!CannotPress) StartCoroutine(HandleMiddlePress()); return false; };
         Module.OnActivate += delegate { CalculateRound(); };
         TPSolveReady.transform.localPosition = new Vector3(0.09f, 0.0686f, 0);
+        PauseSymbol.color = Color.clear;
         Initialise();
         DisplayBalance();
         StartCoroutine(BlinkBetButton());
@@ -288,6 +290,22 @@ public class LuigiPokerScript : MonoBehaviour
     void Update()
     {
 
+    }
+
+    void StatusPress()
+    {
+        Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.ButtonRelease, StatusSelectable.transform);
+        StatusSelectable.AddInteractionPunch();
+        if (!Ready)
+        {
+            HoldSolve = !HoldSolve;
+            PauseSymbol.color = HoldSolve ? Color.white : Color.clear;
+        }
+        else if (!Solved)
+        {
+            PauseSymbol.color = Color.clear;
+            StartCoroutine(SolveRelease());
+        }
     }
 
     void CardPress(int pos)
@@ -726,7 +744,6 @@ public class LuigiPokerScript : MonoBehaviour
 
     private IEnumerator DrawBet(float interval = 0.3f)
     {
-        Debug.LogFormat("[Luigi Poker #{0}] Your balance remains at {1} coin{2}.", _moduleID, Balance, Balance == 1 ? "" : "s");
         for (int i = Bet - 1; i > -1; i--)
         {
             StartCoroutine(ReturnCoin(Coins[i], i == 0));
@@ -737,6 +754,7 @@ public class LuigiPokerScript : MonoBehaviour
                 timer += Time.deltaTime;
             }
         }
+        Debug.LogFormat("[Luigi Poker #{0}] Your balance remains at {1} coin{2}.", _moduleID, Balance, Balance == 1 ? "" : "s");
     }
 
     private IEnumerator ReturnCoin(Image coin, bool proceed, float velocity = 0.25f)
@@ -1067,41 +1085,16 @@ public class LuigiPokerScript : MonoBehaviour
     }
 
 #pragma warning disable 414
-    private string TwitchHelpMessage = "Use '!{0} 123 bet5 go' to select cards 1, 2 & 3, bet 5 coins, then press 'Draw'. Each part of the command is optional: for example, '!{0} 123 go' will not change the bet and '!{0} bet5 go' won't draw any cards. '!{0} mute', '!{0} unmute' will mute/unmute the smooth jazz. '!{0} holdon' / '!{0} holdoff' change whether or not the module will wait for the command '!{0} release' before solving.";
+    private string TwitchHelpMessage = "Use '!{0} 123 bet5 go' to select cards 1, 2 & 3, bet 5 coins, then press 'Draw'. Each part of the command is optional: for example, '!{0} 123 go' will not change the bet and '!{0} bet5 go' won't draw any cards. '!{0} mute', '!{0} unmute' will mute/unmute the smooth jazz. Use '!{0} status' to press the status light.";
 #pragma warning restore 414
     IEnumerator ProcessTwitchCommand(string command)
     {
         command = command.ToLowerInvariant();
         var commandArray = command.Split(' ');
-        if (command == "release")
-        {
-            if (HoldSolve && Ready)
-            {
-                yield return null;
-                StartCoroutine(SolveRelease());
-            }
-            else if (HoldSolve)
-                yield return "sendtochaterror Can't solve release: not ready yet!";
-            yield break;
-        }
-        else if (command == "holdon")
+        if (command == "status")
         {
             yield return null;
-            if (!HoldSolve)
-                yield return "sendtochat Now holding the solve.";
-            else
-                yield return "sendtochat Already holding the solve!";
-            HoldSolve = true;
-            yield break;
-        }
-        else if (command == "holdoff")
-        {
-            yield return null;
-            if (HoldSolve)
-                yield return "sendtochat No longer holding the solve.";
-            else
-                yield return "sendtochat Not holding the solve!";
-            HoldSolve = false;
+            StatusSelectable.OnInteract();
             yield break;
         }
         else if (command == "mute")
@@ -1187,6 +1180,11 @@ public class LuigiPokerScript : MonoBehaviour
                     break;
                 yield return true;
             }
+            if (Ready)
+            {
+                StatusSelectable.OnInteract();
+                break;
+            }
             var choices = new bool[5];
             for (int i = 0; i < 5; i++)
                 if (YourHand.Where(x => x == YourHand[i]).Count() < 2)
@@ -1207,8 +1205,6 @@ public class LuigiPokerScript : MonoBehaviour
                 Buttons[5].OnInteract();
             }
             Buttons[6].OnInteract();
-            if (Ready)
-                StartCoroutine(SolveRelease());
         }
     }
 }
